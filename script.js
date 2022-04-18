@@ -5,14 +5,17 @@ function setup() {
 	createCanvas(windowWidth, windowHeight);
 	colorMode(HSB, 360, 100, 100);
 	c = 0;
+	windowResized();
 }
 
+
 function draw() {
-	background(50);
+	background('white');
 	translate(width / 2, height / 2);
+	
 
 	stroke(255);
-	fill(c, 80, 100);
+	fill(c, 500, 70);
 	c += 1;
 	c = c%360;
 	strokeWeight(1);
@@ -42,4 +45,17 @@ function draw() {
 
 	yoff += 0.01;
 }
+
+
+function windowResized() {
+	if(windowWidth < 550) {
+		size = 10;
+	} else {
+		size = 100;
+	}
+}
+
+	
+
+
 
