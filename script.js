@@ -15,9 +15,9 @@ function draw() {
 	
 
 	stroke(255);
-	fill(c, 500, 70);
-	c += 1;
-	c = c%360;
+	// fill(c, 500, 70);
+	// c += 1;
+	// c = c%360;
 	strokeWeight(1);
 
 	var da = PI / 200;
