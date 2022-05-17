@@ -15,11 +15,10 @@ function draw() {
 	
 
 	stroke(255);
-	// fill(c, 500, 70);
-	// c += 1;
-	// c = c%360;
-  
-	fill(lerpColor(noise(100), noise(400), y / height), 500, 70);
+	fill(c, 500, 70);
+	c += 1;
+	c = c%360;
+
 
 	strokeWeight(1);
 
