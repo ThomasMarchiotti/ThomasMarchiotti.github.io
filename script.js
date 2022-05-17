@@ -19,10 +19,7 @@ function draw() {
 	// c += 1;
 	// c = c%360;
   
-
-	for(let y = 0; y < height; y++) {
-		fill(lerpColor(noise(100), noise(400), y / height), 500, 70);
-	}
+	fill(lerpColor(noise(100), noise(400), y / height), 500, 70);
 
 	strokeWeight(1);
 
