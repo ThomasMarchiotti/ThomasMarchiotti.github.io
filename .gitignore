@@ -1,0 +1,14 @@
+# .gitignore
+
+# Ignora la cartella node_modules
+node_modules/
+
+
+
+# Ignora tutti i file e le cartelle tranne 'dist'
+# /*
+# !/dist
+
+# Ignora tutto in 'dist' eccetto le sottocartelle
+/dist/*
+!/dist/**
