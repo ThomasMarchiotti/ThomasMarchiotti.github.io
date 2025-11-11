@@ -1,13 +1,314 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ruota della Fortuna - Vanilla</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#06b6d4;--muted:#94a3b8}
+    *{box-sizing:border-box;font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial}
+    body{margin:0;min-height:100vh;background:linear-gradient(180deg,#071029 0%, #071a2a 100%);color:#e6eef6;display:flex;align-items:center;justify-content:center;padding:24px}
+    .wrap{width:100%;max-width:1000px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);border-radius:12px;padding:20px;display:grid;grid-template-columns:420px 1fr;gap:20px}
+    .panel{background:rgba(255,255,255,0.03);padding:16px;border-radius:10px}
+    h1{margin:0 0 8px 0;font-size:20px}
+    label{font-size:13px;color:var(--muted)}
+    .controls{display:flex;gap:8px;margin-top:8px}
+    input[type="text"]{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+    button{padding:8px 12px;border-radius:8px;border:0;background:var(--accent);color:#032;cursor:pointer;font-weight:600}
+    button:disabled{opacity:0.45;cursor:not-allowed}
+    ul{list-style:none;padding:0;margin:12px 0 0 0;max-height:300px;overflow:auto}
+    li{display:flex;justify-content:space-between;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.02);margin-bottom:6px}
+    .small{font-size:13px;color:var(--muted)}
+    .wheel-wrap{display:flex;flex-direction:column;align-items:center;gap:12px}
+    #wheelCanvas{border-radius:999px;background:linear-gradient(180deg,#08202b, #04121a);box-shadow:inset 0 6px 20px rgba(0,0,0,0.6)}
+    .pointer{width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-bottom:22px solid #fffb;position:relative;top:-6px}
+    .spin-row{display:flex;gap:12px;align-items:center}
+    .message{margin-top:8px;font-weight:600}
+    .footer{margin-top:12px;font-size:13px;color:var(--muted)}
+    @media (max-width:900px){.wrap{grid-template-columns:1fr;}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <h1>Partecipanti</h1>
+      <label for="nameInput">Inserisci un nome</label>
+      <div class="controls">
+        <input id="nameInput" type="text" placeholder="Es. Mario Rossi" />
+        <button id="addBtn">Aggiungi</button>
+        <button id="clearBtn">Pulisci</button>
+      </div>
+      <div class="footer small">I nomi vengono salvati solo localmente (sessione). Puoi aggiungere, rimuovere e avviare la ruota.</div>
+      <ul id="namesList" aria-live="polite"></ul>
+    </div>
+
+    <div class="panel wheel-wrap">
+      <h1>Ruota della Fortuna</h1>
+      <div class="pointer" aria-hidden="true"></div>
+      <canvas id="wheelCanvas" width="520" height="520" role="img" aria-label="Ruota con i nomi"></canvas>
+
+      <div class="spin-row">
+        <button id="spinBtn">Gira la ruota</button>
+        <div class="small" id="spinCount">0 giri</div>
+      </div>
+      <div class="message" id="resultMsg">Aggiungi almeno un nome per iniziare.</div>
+    </div>
+  </div>
+
+  <script>
+    // --- Stato e DOM ---
+    const input = document.getElementById('nameInput');
+    const addBtn = document.getElementById('addBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const namesList = document.getElementById('namesList');
+    const canvas = document.getElementById('wheelCanvas');
+    const ctx = canvas.getContext('2d');
+    const spinBtn = document.getElementById('spinBtn');
+    const resultMsg = document.getElementById('resultMsg');
+    const spinCount = document.getElementById('spinCount');
+
+    // Partecipanti: inizialmente vuoto. Se vuoi mantenerli temporaneamente anche dopo refresh, puoi
+    // usare localStorage (commentato). Per ora usiamo localStorage per comodità.
+    const STORAGE_KEY = 'wheel_names_v1';
+    let names = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+
+    // Parametri ruota
+    let isSpinning = false;
+    let rotation = 0; // gradi
+    let lastSpin = null;
+    let totalSpins = 0;
+
+    function save() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(names));
+    }
+
+    // --- Gestione UI nomi ---
+    function renderNames() {
+      namesList.innerHTML = '';
+      if (names.length === 0) {
+        const li = document.createElement('li');
+        li.textContent = 'Nessun partecipante ancora';
+        namesList.appendChild(li);
+        spinBtn.disabled = true;
+        resultMsg.textContent = 'Aggiungi almeno un nome per iniziare.';
+        return;
+      }
+      names.forEach((n, i) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span>${escapeHtml(n)}</span>`;
+        const right = document.createElement('div');
+        right.style.display = 'flex';
+        right.style.gap = '8px';
+        const del = document.createElement('button');
+        del.textContent = '✖';
+        del.title = 'Rimuovi';
+        del.style.border='0';del.style.background='transparent';del.style.cursor='pointer';del.onclick = ()=>{names.splice(i,1);save();renderNames();drawWheel();};
+        right.appendChild(del);
+        li.appendChild(right);
+        namesList.appendChild(li);
+      });
+      spinBtn.disabled = false;
+      resultMsg.textContent = 'Premi "Gira la ruota" per scegliere un nome.';
+    }
+
+    addBtn.addEventListener('click', ()=>{
+      const v = input.value.trim();
+      if (!v) return;
+      names.push(v);
+      input.value = '';
+      save();
+      renderNames();
+      drawWheel();
+    });
+
+    input.addEventListener('keydown', (e)=>{ if (e.key==='Enter') addBtn.click(); });
+
+    clearBtn.addEventListener('click', ()=>{
+      if (!confirm('Vuoi rimuovere tutti i nomi?')) return;
+      names = [];
+      save();
+      renderNames();
+      drawWheel();
+    });
+
+    // --- Utility ---
+    function escapeHtml(s){ return s.replace(/[&<>"]+/g, (c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+
+    // --- Disegno ruota ---
+    function drawWheel() {
+      const dpr = window.devicePixelRatio || 1;
+      const size = Math.min(canvas.parentElement.clientWidth - 40, 520);
+      canvas.width = size * dpr;
+      canvas.height = size * dpr;
+      canvas.style.width = size + 'px';
+      canvas.style.height = size + 'px';
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      const cx = canvas.width/2;
+      const cy = canvas.height/2;
+      const radius = Math.min(cx,cy) - 10 * dpr;
+
+      const count = Math.max(1, names.length);
+      const slice = 360 / count;
+
+      // Color palette semplice basata su HSL
+      for (let i=0;i<count;i++){
+        const startDeg = -90 + i*slice;
+        const endDeg = startDeg + slice;
+        ctx.beginPath();
+        ctx.moveTo(cx,cy);
+        ctx.arc(cx,cy,radius, (startDeg*Math.PI)/180, (endDeg*Math.PI)/180);
+        ctx.closePath();
+        ctx.fillStyle = `hsl(${(i*360/count)+20}deg, 65%, 45%)`;
+        ctx.fill();
+        // bordo
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.lineWidth = 2 * dpr;
+        ctx.stroke();
+
+        // testo
+        ctx.save();
+        const midDeg = startDeg + slice/2;
+        const angle = (midDeg*Math.PI)/180;
+        ctx.translate(cx,cy);
+        ctx.rotate(angle);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+        ctx.font = `${14 * dpr}px Inter`;
+        const text = names[i] || '---';
+        // disegno multilinea se troppo lungo
+        const maxWidth = radius * 0.6;
+        ctx.fillText(text, radius * 0.6, 0);
+        ctx.restore();
+      }
+
+      // Cerchio centrale
+      ctx.beginPath();
+      ctx.arc(cx,cy,radius*0.22,0,Math.PI*2);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fill();
+      ctx.lineWidth = 2*dpr;
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.stroke();
+
+      // Applichiamo la rotazione via CSS: disegnamo sempre la ruota in posizione neutra.
+      canvas.style.transform = `rotate(${rotation}deg)`;
+    }
+
+    function wrapText(ctx, text, x, y, maxLines=2){
+      // Scrive il testo avvolgendolo lungo la direzione radiale.
+      const words = text.split(' ');
+      let line = '';
+      let lines = [];
+      for (let n=0;n<words.length;n++){
+        const test = line + (line? ' ':'') + words[n];
+        const metrics = ctx.measureText(test);
+        if (metrics.width > 140 * (window.devicePixelRatio||1) && line){
+          lines.push(line);
+          line = words[n];
+        } else line = test;
+      }
+      if (line) lines.push(line);
+      // Truncate
+      if (lines.length > maxLines) lines = lines.slice(0,maxLines-1).concat(lines[maxLines-1] + '…');
+      const lineHeight = 16 * (window.devicePixelRatio||1);
+      for (let i=0;i<lines.length;i++){
+        ctx.fillText(lines[i], x, y + (i - lines.length/2 + 0.5) * lineHeight);
+      }
+    }
+
+    // --- Animazione e logica di estrazione ---
+    function easeOutCubic(t){ return 1 - Math.pow(1-t,3); }
+
+    function spinWheel(){
+      if (isSpinning || names.length===0) return;
+      isSpinning = true;
+      spinBtn.disabled = true;
+      addBtn.disabled = true;
+      clearBtn.disabled = true;
+
+      const count = names.length;
+      const slice = 360 / count;
+
+      // Genera una rotazione casuale aggiuntiva per creare suspense
+      const extra = Math.floor(Math.random()*360) + 720; // almeno 2 giri
+      const targetIndex = Math.floor(Math.random() * count);
+
+      // Calcolo dell'angolo necessario in modo che il centro del segmento target finisca sotto la freccia (in cima)
+      const segmentCenterAngle = targetIndex * slice + slice/2; // in gradi, misurato da 0 in cima
+      // Visto che ruotiamo la ruota di 'rotation' gradi (CSS rotate), vogliamo che alla fine
+      // (rotation_final % 360) posizioni il centro del segmento al puntatore.
+      // Formuliamo: finalRotation = (360 - segmentCenterAngle) + k*360 + extraRand;
+      // Qui aggiungiamo 'extra' per i giri.
+      const finalRotation = (360 - segmentCenterAngle) + extra;
+      const startRotation = rotation % 360;
+      const normalizedStart = (startRotation + 360) % 360;
+      const delta = finalRotation - normalizedStart;
+
+      const duration = 3800 + Math.random()*1200; // ms
+      const startTime = performance.now();
+
+      function frame(now){
+        const t = Math.min(1, (now - startTime) / duration);
+        const eased = easeOutCubic(t);
+        rotation = normalizedStart + delta * eased;
+        drawWheel();
+        if (t < 1) requestAnimationFrame(frame);
+        else {
+          // Fine
+          isSpinning = false;
+          rotation = (rotation % 360 + 360) % 360;
+          totalSpins++;
+          spinCount.textContent = `${totalSpins} giri`;
+          const winner = computeWinner(rotation, count);
+          resultMsg.textContent = `🎉 Vincitore: ${names[winner]}!`;
+          spinBtn.disabled = false;
+          addBtn.disabled = false;
+          clearBtn.disabled = false;
+        }
+      }
+      requestAnimationFrame(frame);
+    }
+
+    function computeWinner(finalRotationDeg, count){
+      // Determina il vincitore calcolando per ogni segmento dove si trova il suo angolo centrale
+      // dopo la rotazione e scegliendo quello la cui posizione è più vicina alla punta (top).
+      const slice = 360 / count;
+      // angolo centrale di ogni segmento nella posizione disegnata (in gradi)
+      const centers = [];
+      for (let i=0;i<count;i++){
+        const center = -90 + (i + 0.5) * slice; // gradi
+        centers.push(((center % 360) + 360) % 360);
+      }
+      const rotatedCenters = centers.map(c => ((c + finalRotationDeg) % 360 + 360) % 360);
+      // l'angolo della punta (top) in coordinate 0..359 corrisponde a 270° (cioè -90°)
+      const pointerAngle = 270;
+      function angDist(a,b){
+        const diff = Math.abs(a-b) % 360;
+        return Math.min(diff, 360 - diff);
+      }
+      let bestIdx = 0;
+      let bestDist = 1e9;
+      for (let i=0;i<rotatedCenters.length;i++){
+        const d = angDist(rotatedCenters[i], pointerAngle);
+        if (d < bestDist){ bestDist = d; bestIdx = i; }
+      }
+      return bestIdx;
+    }
+
+    spinBtn.addEventListener('click', ()=>{
+      spinWheel();
+    });
+
+    // Setup iniziale
+    window.addEventListener('resize', drawWheel);
+    renderNames();
+    drawWheel();
+
+    // Se vuoi pre-popolare per test: uncomment
+    // names = ['Mario','Luigi','Anna','Carla','Paolo']; save(); renderNames(); drawWheel();
+
+  </script>
+</body>
 </html>
+
